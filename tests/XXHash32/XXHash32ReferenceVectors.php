@@ -1,0 +1,111 @@
+<?php
+
+declare(strict_types=1);
+
+namespace FallenKomradesDev\KSUID\Tests\XXHash32;
+
+/**
+ * XXHash32ReferenceVectors provides the canonical 256-entry reference table
+ * ported verbatim from ksuid-go/xxhash32/xxhash32_test.go (xxh32Ref256).
+ *
+ * For each length N from 0 to 255, hashing the byte sequence [0, 1, 2, ...,
+ * N-1] with xxHash32 (seed=0) must produce the corresponding expected value.
+ * This is the authoritative cross-implementation correctness check for any
+ * xxHash32 port, pure-PHP or GMP-backed alike.
+ */
+trait XXHash32ReferenceVectors
+{
+    /**
+     * @return array<int, array{0:int,1:int}> Each entry is [length, expectedHash]
+     */
+    public static function referenceVectors(): array
+    {
+        $ref = [
+            0x02cc5d05, 0xcf65b03e, 0xc671e7b8, 0x663e9a55,
+            0x80691e66, 0x9ea1b7c4, 0x874131df, 0xa74336dc,
+            0xa3ad90b9, 0x3f5eb53f, 0x6ccca2a6, 0xb7181399,
+            0x606734ab, 0xe31d9d5a, 0xb40496fa, 0x57c01ece,
+            0xb72837f4, 0x7c77adc2, 0x94101d96, 0x1bd0703f,
+            0x828b819c, 0xc6bab491, 0xd67a1cd1, 0xc8461e09,
+            0x4c5b8323, 0x08431ef5, 0x37f107d9, 0xcbea6bcf,
+            0x79586156, 0x1436f6fd, 0xba9df801, 0xef24f709,
+            0x830741c1, 0xf1e6a545, 0xdaddb915, 0x644c3ced,
+            0x58118a69, 0x778632d9, 0xe60e6dd2, 0xddd46630,
+            0xd6a6cf02, 0xd313e3a0, 0x9644b298, 0x29e329e7,
+            0xf699f8cc, 0x024c8507, 0x9f204c78, 0x358c85c6,
+            0xafabf406, 0xfe24c9b1, 0x9cff8cf8, 0x982e5424,
+            0xfd653d74, 0x3b1e2621, 0x943e33fc, 0xb308cf59,
+            0xbf3049ca, 0x304f138b, 0xbf4c90a3, 0x7d266b79,
+            0xf3970525, 0x0bc92326, 0xc32b843b, 0x4c80747b,
+            0x31120435, 0xa4da78a4, 0xd839e74d, 0x7f9a4f33,
+            0xe810b107, 0xda170bb7, 0xefb951e0, 0x541def65,
+            0xfcf1e11a, 0xec0aed0a, 0xf9b74d30, 0x28e437f4,
+            0xa53ceb64, 0x3fe94033, 0x10eb6d56, 0xe4df6b69,
+            0x24520b4f, 0x80d361db, 0x307ad27b, 0x6786181a,
+            0x76377fd9, 0xe4714514, 0x3930cb98, 0x8c48d84d,
+            0x34f1003b, 0xb2b3de72, 0x82a23051, 0xed2beac6,
+            0x9018a99c, 0xdc8f618d, 0x91391bfa, 0x13c25df4,
+            0x7491cc02, 0x35623979, 0x4e5d6c9b, 0x60b547bb,
+            0x7f89ba44, 0x1a20e95b, 0x768b026b, 0xab083e77,
+            0x729bf6ed, 0xd479d9b4, 0x0f993b97, 0x4fb9f9e7,
+            0x08332bd5, 0xb8585e89, 0x1b40bec8, 0xa8380c4d,
+            0xda4d11fd, 0x7eca746c, 0xc0029cb2, 0xb6a5aa35,
+            0x111f674c, 0x4b699fee, 0x7b334d3f, 0x738a3b0a,
+            0x2cbf3472, 0x450c2e78, 0xc02a4a14, 0x8a7ac0bf,
+            0x8f902728, 0x9094a13a, 0x477b5f4f, 0xf07a1b8b,
+            0x6d6194b7, 0x6572cb97, 0x06a3d34a, 0x73776837,
+            0x4b7c6e5b, 0xb7bdd4a4, 0xac4b90b5, 0xb8af0827,
+            0x07e51320, 0xd651959e, 0x5ee9a856, 0xeae3e18f,
+            0xe6f7b2f7, 0x47a63d3c, 0x46217088, 0x1d946e21,
+            0xcea5ddda, 0xd9521ad4, 0x9ddad554, 0x6aafc818,
+            0x6e2466fa, 0xdcf90f0b, 0x0587acd6, 0x71b720b0,
+            0x1661d308, 0x7c4c4283, 0x62d9626f, 0x8bc1bcef,
+            0x9ec9a878, 0x9835c33b, 0x654772ad, 0x31ede000,
+            0x334e6a1c, 0x10f0ce4d, 0x9b97ee1d, 0xa180c182,
+            0x95ac0338, 0x55f62341, 0xe4aaeacd, 0x707991e2,
+            0x09ef220e, 0x3da864d5, 0x228edc2a, 0xb94b0f9e,
+            0xc3bb8afd, 0x9f7b8d47, 0x0ee2cc63, 0x30b2cbad,
+            0x933db667, 0xb6bfd99a, 0xf3921681, 0xa36aae7c,
+            0x103848f2, 0x47fa1f31, 0x5a48be2c, 0xe9899485,
+            0xe2d33217, 0x577a419a, 0x4a9cf8c3, 0xab719edf,
+            0x976a583a, 0xd51c9148, 0xe2153efb, 0x43b5e7ac,
+            0x5779a00d, 0x2610f906, 0xf1e3a0e9, 0x2b0f85ac,
+            0x644637dc, 0xf294899d, 0x69b7e5ea, 0x83f9ef8c,
+            0xc0a2f79c, 0x25c0d949, 0xa03cf05f, 0x3d761627,
+            0xe772e989, 0xa02dad1f, 0x89c939de, 0xcb24bb77,
+            0x4bd9df26, 0x6b529ab9, 0x8068901e, 0xd4a5eb36,
+            0xfa2916fa, 0x76ea5f88, 0xad419eb0, 0xa914a7db,
+            0x248d4816, 0x599f6816, 0x83fb3224, 0xb6ce19e2,
+            0xb61af88b, 0x0f553f8a, 0x54774566, 0xcb81b2b8,
+            0x188114d1, 0xf816785a, 0xba9ae36a, 0xca9d49fc,
+            0xbc777a89, 0xcece72d9, 0xe0a20faa, 0x640fd97b,
+            0x0a178850, 0xa9d05ebe, 0xcfd13ee3, 0x4883175d,
+            0xbbf96ad8, 0x0a0dfde2, 0x9104136a, 0x6e3f2d0d,
+            0x1fd0fbb0, 0x5b9a61e5, 0x85f056c0, 0xf13c3ebc,
+            0x3dacae67, 0xadccdb2c, 0xf8202c77, 0x08e47a81,
+            0x0c71a4cd, 0xc11a8e52, 0x25cb4263, 0xaff2217c,
+            0xce352866, 0x5d1d0553, 0x2b13b83c, 0xb4d58730,
+        ];
+
+        $cases = [];
+        foreach ($ref as $len => $expected) {
+            $cases["len={$len}"] = [$len, $expected];
+        }
+
+        return $cases;
+    }
+
+    /**
+     * inputBytes returns the byte sequence [0, 1, 2, ..., $len-1] used to
+     * generate the reference vectors above.
+     */
+    public static function inputBytes(int $len): string
+    {
+        $bytes = '';
+        for ($i = 0; $i < $len; $i++) {
+            $bytes .= chr($i & 0xFF);
+        }
+
+        return $bytes;
+    }
+}
