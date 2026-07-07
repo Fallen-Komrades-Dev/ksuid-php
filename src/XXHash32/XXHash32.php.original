@@ -1,0 +1,357 @@
+<?php
+
+declare(strict_types=1);
+
+namespace FallenKomradesDev\KSUID\XXHash32;
+
+/**
+ * XXHash32 - pure-PHP implementation (seed = 0).
+ *
+ * Ported from the reference C implementation (https://github.com/Cyan4973/xxHash)
+ * and the Go port in xxhash32/xxhash32.go.
+ *
+ * All arithmetic is performed as unsigned 32-bit integers via masking with
+ * MASK32 (0xFFFFFFFF) so the implementation works correctly on 64-bit PHP
+ * without any GMP or bcmath dependency.
+ *
+ * IMPORTANT: PHP ints are 64-bit signed, but PHP silently promotes integer
+ * multiplication to float once the mathematical result exceeds PHP_INT_MAX
+ * (~9.22e18). Two 32-bit values can multiply to ~1.84e19, which is well past
+ * that limit, so naive `($a * $b) & 0xFFFFFFFF` is NOT safe here. All
+ * multiplications by the xxHash primes therefore go through mul32(), which
+ * splits the multiplication into 16-bit halves so every intermediate value
+ * stays comfortably inside the 64-bit signed integer range.
+ */
+final class XXHash32
+{
+    // ---- primes ----
+    private const PRIME1 = 0x9E3779B1; // 2654435761
+    private const PRIME2 = 0x85EBCA77; // 2246822519
+    private const PRIME3 = 0xC2B2AE3D; // 3266489917
+    private const PRIME4 = 0x27D4EB2F; //  668265263
+    private const PRIME5 = 0x165667B1; //  374761393
+
+    private const MASK32 = 0xFFFFFFFF;
+
+    // initial accumulator values (seed = 0)
+    // v1 = prime1 + prime2  (mod 2^32)
+    private const INIT_V1 = 0x24234428; // (2654435761 + 2246822519) & 0xFFFFFFFF
+    // v2 = prime2
+    private const INIT_V2 = 0x85EBCA77;
+    // v3 = 0
+    private const INIT_V3 = 0x00000000;
+    // v4 = -prime1  (mod 2^32)  = 2^32 - 2654435761 = 1640531535
+    private const INIT_V4 = 0x61C8864F;
+
+    /** @var int[] Four 32-bit accumulators */
+    private array $v = [self::INIT_V1, self::INIT_V2, self::INIT_V3, self::INIT_V4];
+
+    /** @var string Leftover bytes not yet processed in a full 16-byte block */
+    private string $buf = '';
+
+    /** @var int Total bytes fed */
+    private int $totalLen = 0;
+
+    /** @var bool Whether Reset() has been called at least once */
+    private bool $initialized = false;
+
+    // ------------------------------------------------------------------
+    // Public API
+    // ------------------------------------------------------------------
+
+    /**
+     * Reset returns the hasher to its zero-seed initial state.
+     * Must be called before the first Write() (or the first Write calls it
+     * automatically, mirroring Go's lazy-init behaviour).
+     */
+    public function reset(): void
+    {
+        $this->v            = [self::INIT_V1, self::INIT_V2, self::INIT_V3, self::INIT_V4];
+        $this->buf          = '';
+        $this->totalLen     = 0;
+        $this->initialized  = true;
+    }
+
+    /**
+     * Write feeds bytes into the incremental hasher.
+     * Mirrors Go's (XXHZero).Write().
+     */
+    public function write(string $input): void
+    {
+        if (!$this->initialized) {
+            $this->reset();
+        }
+
+        $len = strlen($input);
+        $this->totalLen += $len;
+
+        // Append to buffer; if still < 16 bytes we are done.
+        $this->buf .= $input;
+
+        if (strlen($this->buf) < 16) {
+            return;
+        }
+
+        // Process all complete 16-byte blocks from the buffer.
+        $offset = 0;
+        $bufLen = strlen($this->buf);
+
+        while ($offset + 16 <= $bufLen) {
+            $this->mixBlock(substr($this->buf, $offset, 16));
+            $offset += 16;
+        }
+
+        // Keep the remainder.
+        $this->buf = substr($this->buf, $offset);
+    }
+
+    /**
+     * Sum32 finalises and returns the 32-bit hash as an unsigned integer.
+     * Does not alter the hasher state (safe to call multiple times).
+     */
+    public function sum32(): int
+    {
+        return $this->computeSum();
+    }
+
+    /**
+     * Size returns the number of bytes in the digest (always 4).
+     */
+    public function size(): int
+    {
+        return 4;
+    }
+
+    /**
+     * BlockSize returns the minimum block size (always 1).
+     */
+    public function blockSize(): int
+    {
+        return 1;
+    }
+
+    // ------------------------------------------------------------------
+    // Static helpers
+    // ------------------------------------------------------------------
+
+    /**
+     * checksumZero computes xxHash32 with seed=0 for the full $input string.
+     * This is the standalone "one-shot" variant, identical to ChecksumZero in Go.
+     */
+    public static function checksumZero(string $input): int
+    {
+        $len = strlen($input);
+        $h32 = $len & self::MASK32;
+
+        $offset = 0;
+
+        if ($len >= 16) {
+            $v1 = self::INIT_V1;
+            $v2 = self::INIT_V2;
+            $v3 = self::INIT_V3;
+            $v4 = self::INIT_V4;
+
+            while ($offset + 16 <= $len) {
+                // Read four little-endian uint32s from 16 bytes.
+                ['v1' => $v1, 'v2' => $v2, 'v3' => $v3, 'v4' => $v4] =
+                    self::mixBlockStatic($v1, $v2, $v3, $v4, $input, $offset);
+                $offset += 16;
+            }
+
+            $h32 = ($h32
+                  + self::rotl32($v1, 1)
+                  + self::rotl32($v2, 7)
+                  + self::rotl32($v3, 12)
+                  + self::rotl32($v4, 18)) & self::MASK32;
+        } else {
+            $h32 = ($h32 + self::PRIME5) & self::MASK32;
+        }
+
+        // Remaining full 4-byte words
+        while ($offset + 4 <= $len) {
+            $word = unpack('V', substr($input, $offset, 4))[1]; // little-endian uint32
+            $h32  = self::mul32(
+                self::rotl32(self::mask32($h32 + self::mul32($word, self::PRIME3)), 17),
+                self::PRIME4
+            );
+            $offset += 4;
+        }
+
+        // Remaining bytes
+        while ($offset < $len) {
+            $byte = ord($input[$offset]);
+            $h32  = self::mul32(
+                self::rotl32(self::mask32($h32 + self::mul32($byte, self::PRIME5)), 11),
+                self::PRIME1
+            );
+            $offset++;
+        }
+
+        return self::avalanche($h32);
+    }
+
+    // ------------------------------------------------------------------
+    // Private helpers
+    // ------------------------------------------------------------------
+
+    /**
+     * Mix one 16-byte block into the four instance accumulators.
+     */
+    private function mixBlock(string $block): void
+    {
+        $data = unpack('V4', $block); // four little-endian uint32s
+
+        $this->v[0] = self::mul32(
+            self::rotl32(self::mask32($this->v[0] + self::mul32($data[1], self::PRIME2)), 13),
+            self::PRIME1
+        );
+        $this->v[1] = self::mul32(
+            self::rotl32(self::mask32($this->v[1] + self::mul32($data[2], self::PRIME2)), 13),
+            self::PRIME1
+        );
+        $this->v[2] = self::mul32(
+            self::rotl32(self::mask32($this->v[2] + self::mul32($data[3], self::PRIME2)), 13),
+            self::PRIME1
+        );
+        $this->v[3] = self::mul32(
+            self::rotl32(self::mask32($this->v[3] + self::mul32($data[4], self::PRIME2)), 13),
+            self::PRIME1
+        );
+    }
+
+    /**
+     * Static version of mixBlock used in the one-shot checksumZero path.
+     *
+     * @return array{v1:int,v2:int,v3:int,v4:int}
+     */
+    private static function mixBlockStatic(
+        int $v1, int $v2, int $v3, int $v4, string $input, int $offset
+    ): array {
+        $data = unpack('V4', substr($input, $offset, 16));
+
+        $v1 = self::mul32(
+            self::rotl32(self::mask32($v1 + self::mul32($data[1], self::PRIME2)), 13),
+            self::PRIME1
+        );
+        $v2 = self::mul32(
+            self::rotl32(self::mask32($v2 + self::mul32($data[2], self::PRIME2)), 13),
+            self::PRIME1
+        );
+        $v3 = self::mul32(
+            self::rotl32(self::mask32($v3 + self::mul32($data[3], self::PRIME2)), 13),
+            self::PRIME1
+        );
+        $v4 = self::mul32(
+            self::rotl32(self::mask32($v4 + self::mul32($data[4], self::PRIME2)), 13),
+            self::PRIME1
+        );
+
+        return ['v1' => $v1, 'v2' => $v2, 'v3' => $v3, 'v4' => $v4];
+    }
+
+    /**
+     * Finalise the incremental hash state (without mutating it).
+     */
+    private function computeSum(): int
+    {
+        $h32 = $this->totalLen & self::MASK32;
+
+        if ($this->totalLen >= 16) {
+            $h32 = ($h32
+                + self::rotl32($this->v[0], 1)
+                + self::rotl32($this->v[1], 7)
+                + self::rotl32($this->v[2], 12)
+                + self::rotl32($this->v[3], 18)) & self::MASK32;
+        } else {
+            $h32 = ($h32 + self::PRIME5) & self::MASK32;
+        }
+
+        $buf    = $this->buf;
+        $bufLen = strlen($buf);
+        $offset = 0;
+
+        // Remaining full 4-byte words
+        while ($offset + 4 <= $bufLen) {
+            $word = unpack('V', substr($buf, $offset, 4))[1];
+            $h32  = self::mul32(
+                self::rotl32(self::mask32($h32 + self::mul32($word, self::PRIME3)), 17),
+                self::PRIME4
+            );
+            $offset += 4;
+        }
+
+        // Remaining bytes
+        while ($offset < $bufLen) {
+            $byte = ord($buf[$offset]);
+            $h32  = self::mul32(
+                self::rotl32(self::mask32($h32 + self::mul32($byte, self::PRIME5)), 11),
+                self::PRIME1
+            );
+            $offset++;
+        }
+
+        return self::avalanche($h32);
+    }
+
+    /**
+     * Rotate $val left by $shift bits within 32 bits.
+     */
+    private static function rotl32(int $val, int $shift): int
+    {
+        $val &= self::MASK32;
+        return (($val << $shift) | ($val >> (32 - $shift))) & self::MASK32;
+    }
+
+    /**
+     * Mask an integer to 32 unsigned bits.
+     * On 64-bit PHP, addition can overflow past 0xFFFFFFFF; this strips
+     * everything above bit 31. Safe because PHP addition of two values each
+     * <= 0xFFFFFFFF never exceeds PHP_INT_MAX, so it never becomes a float.
+     */
+    private static function mask32(int $v): int
+    {
+        return $v & self::MASK32;
+    }
+
+    /**
+     * Overflow-safe unsigned 32-bit multiplication: (a * b) mod 2^32.
+     *
+     * PHP promotes integer multiplication to float once the true
+     * mathematical product exceeds PHP_INT_MAX. Since two 32-bit operands
+     * can produce a product as large as ~1.84e19 (> PHP_INT_MAX ~9.22e18),
+     * naive `($a * $b) & MASK32` is unsafe. This splits $a into 16-bit
+     * halves so every intermediate product/sum stays well under 2^63:
+     *   a = (aHi << 16) | aLo
+     *   a*b = (aHi*b << 16) + aLo*b   (mod 2^32)
+     * aHi*b <= 0xFFFF * 0xFFFFFFFF ~= 2.8e14, far below PHP_INT_MAX, and the
+     * subsequent << 16 / addition stay within signed 64-bit range too
+     * (verified: max value before final mask fits in ~50 bits).
+     */
+    private static function mul32(int $a, int $b): int
+    {
+        $a &= self::MASK32;
+        $b &= self::MASK32;
+
+        $aLo = $a & 0xFFFF;
+        $aHi = $a >> 16;
+
+        $loPart = ($aLo * $b) & self::MASK32;
+        $hiPart = ($aHi * $b) << 16;
+
+        return ($loPart + $hiPart) & self::MASK32;
+    }
+
+    /**
+     * Final avalanche / mixing step.
+     */
+    private static function avalanche(int $h32): int
+    {
+        $h32 ^= ($h32 >> 15);
+        $h32  = self::mul32($h32, self::PRIME2);
+        $h32 ^= ($h32 >> 13);
+        $h32  = self::mul32($h32, self::PRIME3);
+        $h32 ^= ($h32 >> 16);
+
+        return $h32 & self::MASK32;
+    }
+}
