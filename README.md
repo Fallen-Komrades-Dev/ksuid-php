@@ -274,4 +274,4 @@ verify.sh / verify.bat            Full verification pipeline
 
 ## License
 
-MIT
+BSD 3-Clause
