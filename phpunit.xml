@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/11.5/phpunit.xsd"
+         bootstrap="vendor/autoload.php"
+         colors="true"
+         cacheDirectory=".phpunit.cache"
+         executionOrder="depends,defects"
+         failOnRisky="true"
+         failOnWarning="true"
+         failOnPhpunitWarning="false"
+         beStrictAboutOutputDuringTests="true">
+    <testsuites>
+        <testsuite name="KSUID Test Suite">
+            <directory>tests</directory>
+        </testsuite>
+    </testsuites>
+
+    <source>
+        <include>
+            <directory suffix=".php">src</directory>
+        </include>
+		<exclude>
+			<directory>vendor</directory>
+			<directory>tests</directory>
+		</exclude>		
+    </source>
+
+    <coverage includeUncoveredFiles="true">
+        <report>
+            <html outputDirectory="./test-results/coverage-report"/>
+            <text outputFile="php://stdout" showUncoveredFiles="false"/>
+            <clover outputFile="./test-results/coverage.xml"/>
+        </report>
+    </coverage>
+
+    <php>
+        <!--
+            Some tests (StringPartitioner, XXHash32 cross-checks, etc.) are
+            order-sensitive with respect to Ksuid's static Epoch override.
+            This ini setting has no functional effect; it documents intent
+            for anyone reading the config that global static state is reset
+            between tests via setUp()/tearDown(), not via php.ini.
+        -->
+        <ini name="date.timezone" value="UTC"/>
+    </php>
+</phpunit>
