@@ -1,0 +1,9 @@
+/vendor/
+/coverage-report/
+/.phpunit.cache/
+/coverage.xml
+/test-results/
+/.phpunit.result.cache
+composer.lock
+.DS_Store
+Thumbs.db
